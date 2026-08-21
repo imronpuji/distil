@@ -32,10 +32,24 @@ Poin penting:
 """
 
 import argparse
+import inspect
 
 from datasets import load_dataset
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from trl import SFTConfig, SFTTrainer
+
+
+def build_sft_config(**kwargs):
+    """Filter kwargs ke parameter yang beneran didukung SFTConfig di versi trl
+    yang keinstall -- API trl sering berubah antar versi, jadi ini biar script
+    nggak gampang patah kalau ada parameter yang berubah nama/dihapus."""
+    accepted = set(inspect.signature(SFTConfig.__init__).parameters)
+    filtered = {k: v for k, v in kwargs.items() if k in accepted}
+    dropped = {k: v for k, v in kwargs.items() if k not in accepted}
+    if dropped:
+        print(f"[peringatan] Parameter berikut tidak didukung SFTConfig versi ini, "
+              f"di-skip: {list(dropped.keys())}")
+    return SFTConfig(**filtered)
 
 
 def main():
@@ -66,7 +80,7 @@ def main():
     train_ds = load_dataset("json", data_files=args.train, split="train")
     valid_ds = load_dataset("json", data_files=args.valid, split="train")
 
-    config = SFTConfig(
+    config = build_sft_config(
         output_dir=args.out,
         num_train_epochs=args.epochs,
         per_device_train_batch_size=args.batch_size,
