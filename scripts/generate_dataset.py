@@ -191,7 +191,11 @@ def main():
             for seed in pending
         }
 
+        print(f"Mengirim {len(pending)} request ke {args.host} (model={args.model}, workers={args.workers})...",
+              flush=True)
+
         for fut in as_completed(futures):
+            seed = futures[fut]
             results, errors = fut.result()
             for r in results:
                 out_f.write(json.dumps(r, ensure_ascii=False) + "\n")
@@ -203,11 +207,13 @@ def main():
             n_done += len(results)
             n_err += len(errors)
             total_processed = n_done + n_err
-            if total_processed % 20 == 0 or total_processed == len(pending) * args.num_samples:
-                elapsed = time.time() - t0
-                rate = total_processed / elapsed if elapsed > 0 else 0
-                print(f"[{total_processed}] done={n_done} err={n_err} "
-                      f"({rate:.2f} it/s, {elapsed:.0f}s elapsed)")
+            elapsed = time.time() - t0
+            rate = total_processed / elapsed if elapsed > 0 else 0
+            latency = results[0]["meta"]["latency_s"] if results else None
+            status = "OK" if results else "ERR"
+            print(f"[{total_processed}/{len(pending)}] {status} id={seed['id']} "
+                  f"latency={latency}s done={n_done} err={n_err} "
+                  f"({rate:.2f} it/s, {elapsed:.0f}s elapsed)", flush=True)
 
     print(f"\nSelesai. Total sukses: {n_done}, error: {n_err}.")
     print(f"Output: {out_path}")
