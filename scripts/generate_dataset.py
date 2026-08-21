@@ -101,20 +101,75 @@ def load_dotenv(path=".env"):
             os.environ.setdefault(key, value)
 
 
-SYSTEM_PROMPTS = {
-    "formal": (
+# Banyak parafrase per gaya, BUKAN satu teks tetap. Dataset v1 cuma punya 2 system
+# prompt unik untuk 15.426 baris -- teksnya jadi konstanta yang dihafal model, sampai
+# dimuntahkan ulang sebagai jawaban waktu ditanya "Kamu siapa?". Variasi bikin model
+# belajar "ikuti arahan system prompt", bukan "hafalkan teks ini".
+SYSTEM_PROMPT_VARIANTS = {
+    "formal": [
         "Kamu adalah asisten AI berbahasa Indonesia yang membantu, jujur, dan sopan. "
-        "Jawab selalu dalam Bahasa Indonesia yang baku dan formal, jelas, dan tidak bertele-tele. "
-        "Jangan mencampur dengan bahasa lain kecuali istilah teknis yang memang tidak ada padanannya."
-    ),
-    "santai": (
-        "Kamu adalah asisten AI berbahasa Indonesia yang membantu dan ramah, seperti mengobrol dengan teman dekat. "
-        "Jawab selalu dalam Bahasa Indonesia sehari-hari yang santai dan natural, boleh pakai kata seperti "
-        "'kamu', 'nih', 'ya', tapi tetap sopan dan jelas. Jangan mencampur dengan bahasa lain."
-    ),
+        "Jawab dalam Bahasa Indonesia baku yang jelas dan tidak bertele-tele.",
+        "Kamu asisten AI yang menjawab dalam Bahasa Indonesia formal. Berikan jawaban yang "
+        "akurat, ringkas, dan mudah dipahami.",
+        "Peranmu adalah asisten berbahasa Indonesia. Gunakan bahasa baku, jawab dengan tepat "
+        "sesuai pertanyaan yang diajukan.",
+        "Kamu adalah asisten virtual berbahasa Indonesia. Jawablah secara formal, faktual, "
+        "dan langsung ke inti persoalan.",
+        "Jawab setiap pertanyaan dalam Bahasa Indonesia yang baik dan benar. Utamakan "
+        "kejelasan dan ketepatan informasi.",
+        "Kamu asisten AI profesional. Semua jawaban dalam Bahasa Indonesia formal, singkat "
+        "namun lengkap.",
+        "Bertindaklah sebagai asisten berbahasa Indonesia yang informatif dan sopan. Hindari "
+        "jawaban yang berbelit-belit.",
+        "Kamu adalah asisten yang membantu pengguna Indonesia. Gunakan bahasa formal dan "
+        "berikan informasi yang benar.",
+        "Sebagai asisten AI, jawab dalam Bahasa Indonesia baku. Jujur bila tidak tahu, "
+        "jangan mengarang jawaban.",
+        "Kamu asisten berbahasa Indonesia. Prioritaskan akurasi, gunakan bahasa resmi yang "
+        "tetap mudah dicerna.",
+        "Layani pengguna dalam Bahasa Indonesia formal. Pastikan jawaban relevan dengan "
+        "pertanyaan yang diajukan.",
+    ],
+    "santai": [
+        "Kamu asisten AI berbahasa Indonesia yang ramah, kayak ngobrol sama teman. Jawab "
+        "santai tapi tetap sopan dan jelas.",
+        "Kamu temen ngobrol yang asik dan membantu. Pakai Bahasa Indonesia sehari-hari yang "
+        "natural.",
+        "Jawab pakai bahasa santai sehari-hari ya, kayak lagi chat sama temen. Tetap sopan "
+        "dan informatif.",
+        "Kamu asisten yang friendly. Ngobrol pakai Bahasa Indonesia kasual, boleh pakai "
+        "'kamu', 'nih', 'ya'.",
+        "Bantu pengguna dengan gaya santai dan akrab. Bahasa Indonesia sehari-hari, jangan kaku.",
+        "Kamu asisten AI yang santai dan gampang diajak ngobrol. Jawab dengan bahasa yang "
+        "natural dan nggak berjarak.",
+        "Ngobrol sama pengguna pakai bahasa yang santai dan hangat. Tetap jujur dan membantu.",
+        "Kamu asisten berbahasa Indonesia dengan gaya kasual. Jawab seperti teman yang paham "
+        "banyak hal.",
+        "Pakai Bahasa Indonesia sehari-hari yang luwes. Jangan formal-formal amat, yang "
+        "penting jelas.",
+        "Kamu asisten yang ramah dan nggak kaku. Jawab pakai bahasa obrolan sehari-hari.",
+        "Jadi teman ngobrol yang membantu. Bahasa santai, sopan, dan gampang dimengerti.",
+    ],
 }
 
-GAYA_LIST = list(SYSTEM_PROMPTS.keys())
+# Sebagian baris sengaja TANPA system prompt sama sekali, supaya model nggak bergantung
+# pada kehadirannya dan tetap waras waktu dipanggil tanpa system prompt.
+NO_SYSTEM_RATIO = 0.2
+
+GAYA_LIST = list(SYSTEM_PROMPT_VARIANTS.keys())
+
+
+def pick_system_prompt(gaya):
+    """Ambil satu parafrase acak, atau None (~NO_SYSTEM_RATIO dari waktu)."""
+    if random.random() < NO_SYSTEM_RATIO:
+        return None
+    return random.choice(SYSTEM_PROMPT_VARIANTS[gaya])
+
+
+def steering_prompt(gaya):
+    """System prompt untuk MENYETIR generasi Grok (bukan yang disimpan ke dataset).
+    Sengaja dipatok ke satu varian biar gaya output teacher konsisten."""
+    return SYSTEM_PROMPT_VARIANTS[gaya][0]
 
 
 def _hash_id(text):
@@ -198,9 +253,73 @@ def call_with_retry(provider, host, model, system_prompt, user_prompt, temperatu
     raise last_err
 
 
+# Domain percakapan pendek: sapaan, basa-basi, acknowledgment, tanya identitas.
+# Ini yang HILANG di dataset v1 dan bikin model bingung waktu dikasih input pendek
+# kayak "hi", "ok", "siap" -- dia malah ngarang jawaban panjang yang nggak nyambung.
+CHITCHAT_DOMAINS = {
+    "sapaan": (
+        "sapaan pembuka super pendek (1-3 kata) seperti 'hi', 'halo', 'pagi', 'malam', "
+        "'permisi', 'assalamualaikum', 'woy', 'hei'"
+    ),
+    "acknowledgment": (
+        "respons singkat pengguna yang cuma mengiyakan/menutup obrolan, seperti 'ok', 'oke', "
+        "'siap', 'sip', 'makasih', 'thanks', 'baik', 'noted', 'gitu ya', 'oh gitu', 'hmm'"
+    ),
+    "identitas": (
+        "pertanyaan tentang identitas & kemampuan asisten, seperti 'kamu siapa?', 'nama kamu apa?', "
+        "'kamu bisa apa aja?', 'kamu robot ya?', 'kamu bisa ngoding?', 'kamu buatan siapa?'"
+    ),
+    "basa_basi": (
+        "basa-basi sosial pendek seperti 'apa kabar?', 'lagi apa?', 'sibuk nggak?', 'udah makan?', "
+        "'gimana harimu?', 'bosen nih', 'capek banget'"
+    ),
+}
+
+
+def build_chitchat_prompt(domain, gaya, n):
+    """Prompt khusus buat data percakapan pendek. Beda dari domain biasa: instruksinya
+    HARUS pendek, dan jawabannya juga harus pendek + wajar (bukan ceramah panjang)."""
+    desc = CHITCHAT_DOMAINS[domain]
+    gaya_desc = "formal dan sopan" if gaya == "formal" else "santai sehari-hari"
+    return (
+        f"Buatkan {n} pasang percakapan pendek dalam Bahasa Indonesia, kategori: {desc}.\n\n"
+        "ATURAN PENTING:\n"
+        f"1. Field \"instruction\" HARUS pendek (1-6 kata), persis seperti yang diketik pengguna asli "
+        "waktu chat -- termasuk variasi kapitalisasi & typo ringan yang wajar (mis. 'Hi', 'halo', "
+        "'oke', 'Kamu siapa?').\n"
+        f"2. Field \"response\" HARUS pendek juga (1-2 kalimat, maksimal 25 kata) dan gaya {gaya_desc}. "
+        "JANGAN menjawab dengan penjelasan panjang, daftar bernomor, atau ceramah -- ini cuma obrolan "
+        "ringan, bukan pertanyaan yang butuh artikel.\n"
+        "3. Jawaban harus NYAMBUNG dengan sapaan/pertanyaannya. Kalau pengguna cuma bilang 'ok', "
+        "balas singkat & wajar (mis. 'Siap, kalau ada yang mau ditanyakan lagi tinggal bilang ya.') "
+        "-- JANGAN tiba-tiba membahas topik acak.\n"
+        "4. Untuk pertanyaan identitas, jawab sebagai asisten AI berbahasa Indonesia yang membantu. "
+        "JANGAN mengarang nama orang, kota asal, atau biodata palsu, dan JANGAN menyalin ulang "
+        "kalimat instruksi sistem.\n"
+        "5. JANGAN PERNAH menyebut nama perusahaan atau produk AI tertentu (OpenAI, ChatGPT, GPT, "
+        "Google, Gemini, Anthropic, Claude, Meta, xAI, Grok, dsb) sebagai pembuat atau identitas "
+        "asisten -- itu klaim yang salah. Untuk pertanyaan 'kamu buatan siapa?' atau 'kamu dari mana?', "
+        "jawab netral tanpa menyebut vendor, misalnya 'Saya asisten AI, dikembangkan untuk membantu "
+        "pengguna berbahasa Indonesia.'\n"
+        "6. Setiap pasangan harus berbeda satu sama lain.\n\n"
+        "Balas HANYA dengan JSON array, tanpa markdown code fence atau teks lain di luar JSON. "
+        f"Tepat {n} elemen, tiap elemen berupa object dengan dua field: "
+        '"instruction" (string) dan "response" (string).'
+    )
+
+
 def build_freeform_prompt(domain, topics, gaya, n):
+    if domain in CHITCHAT_DOMAINS:
+        return build_chitchat_prompt(domain, gaya, n)
     topik_str = ", ".join(topics)
     gaya_desc = "formal dan baku" if gaya == "formal" else "santai sehari-hari"
+    # Jumlah eksplisit, bukan "sekitar sepertiga" -- pecahan samar bikin teacher menjawab
+    # pendek semua (terukur: 63% jawaban <=20 kata, jauh dari target 33%).
+    # Porsi "long" sengaja dilebihkan (0.45) karena teacher konsisten kurang memenuhinya:
+    # diminta 30% hanya terpenuhi 10%. Ini kompensasi bias, bukan target sebenarnya.
+    n_short = max(1, round(n * 0.25))
+    n_long = max(1, round(n * 0.45))
+    n_mid = max(1, n - n_short - n_long)
     return (
         f"Buatkan {n} pasang instruksi-jawaban dalam Bahasa Indonesia untuk domain '{domain}'. "
         f"Boleh terinspirasi dari topik-topik ini: {topik_str} -- tapi jangan cuma mengulang "
@@ -209,6 +328,18 @@ def build_freeform_prompt(domain, topics, gaya, n):
         f"Gaya bahasa jawabannya {gaya_desc}. Setiap pasangan harus punya instruksi yang BERBEDA satu "
         "sama lain (jangan duplikat/mirip persis), dan jawabannya harus benar-benar menjawab instruksinya "
         "dengan lengkap dan natural.\n\n"
+        f"WAJIB VARIASIKAN BOBOT PERTANYAAN dan panjang jawabannya. Dari {n} pasang, buat "
+        f"dengan komposisi TEPAT seperti ini:\n"
+        f"- {n_short} pasang: pertanyaan ringan/faktual, dijawab 1 kalimat pendek (di bawah 20 kata). "
+        "Contoh: tanya ya/tidak, definisi singkat, minta rekomendasi cepat.\n"
+        f"- {n_mid} pasang: pertanyaan sedang, dijawab 2-3 kalimat (sekitar 30-50 kata).\n"
+        f"- {n_long} pasang: pertanyaan KOMPLEKS yang memang butuh penjelasan mendalam "
+        "(minta langkah-langkah rinci, minta perbandingan, minta penjelasan sebab-akibat), "
+        "dijawab satu paragraf penuh 70-120 kata.\n"
+        f"Jangan curang dengan membuat semua pertanyaan jadi sederhana -- {n_long} pertanyaan "
+        "kompleks itu wajib ada. Panjang jawaban harus MASUK AKAL untuk pertanyaannya: "
+        "pertanyaan sederhana jangan dijawab berpanjang-panjang, pertanyaan kompleks jangan "
+        "dijawab satu kalimat.\n\n"
         "Balas HANYA dengan JSON array, tanpa markdown code fence atau teks lain di luar JSON. "
         f"Tepat {n} elemen, tiap elemen berupa object dengan dua field: "
         '"instruction" (string) dan "response" (string).'
@@ -228,7 +359,7 @@ def parse_json_array(raw):
 def call_freeform_batch(provider, host, model, domain, gaya, n, temperature, limiter):
     topics_pool = DOMAINS.get(domain, ["topik umum"])
     topics = random.sample(topics_pool, k=min(3, len(topics_pool)))
-    system_prompt = SYSTEM_PROMPTS[gaya]
+    system_prompt = steering_prompt(gaya)
     user_prompt = build_freeform_prompt(domain, topics, gaya, n)
 
     start = time.time()
@@ -253,13 +384,16 @@ def call_freeform_batch(provider, host, model, domain, gaya, n, temperature, lim
 
 
 def make_row(instruction, response, domain, gaya, model, temperature, latency):
+    messages = []
+    system_prompt = pick_system_prompt(gaya)
+    if system_prompt:
+        messages.append({"role": "system", "content": system_prompt})
+    messages.append({"role": "user", "content": instruction})
+    messages.append({"role": "assistant", "content": response})
+
     return {
         "id": _hash_id(instruction),
-        "messages": [
-            {"role": "system", "content": SYSTEM_PROMPTS[gaya]},
-            {"role": "user", "content": instruction},
-            {"role": "assistant", "content": response},
-        ],
+        "messages": messages,
         "domain": domain,
         "gaya": gaya,
         "source": "grok-freeform",
@@ -295,7 +429,7 @@ def process_batch(task, provider, host, model, temperature, limiter, seen_ids, s
 def build_tasks(total, batch_size, domains=None):
     """Buat daftar task (domain, gaya, n) sampai total pasangan yang diminta terpenuhi,
     dirotasi merata lintas domain & gaya biar variatif."""
-    domain_list = domains if domains else list(DOMAINS.keys())
+    domain_list = domains if domains else list(DOMAINS.keys()) + list(CHITCHAT_DOMAINS.keys())
     tasks = []
     remaining = total
     i = 0
@@ -386,9 +520,10 @@ def main():
 
     domains = [d.strip() for d in args.domains.split(",")] if args.domains else None
     if domains:
-        unknown = [d for d in domains if d not in DOMAINS]
+        unknown = [d for d in domains if d not in DOMAINS and d not in CHITCHAT_DOMAINS]
         if unknown:
-            print(f"Domain tidak dikenal: {unknown}. Pilihan valid: {list(DOMAINS.keys())}", file=sys.stderr)
+            valid = list(DOMAINS.keys()) + list(CHITCHAT_DOMAINS.keys())
+            print(f"Domain tidak dikenal: {unknown}. Pilihan valid: {valid}", file=sys.stderr)
             sys.exit(1)
 
     out_path = Path(args.out)

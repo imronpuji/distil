@@ -49,6 +49,23 @@ REFUSAL_PATTERNS = [
     r"\bmaaf, saya tidak (dapat|bisa) membantu\b",
 ]
 
+# Teacher (Grok) kadang menjawab "Saya dibuat oleh OpenAI" untuk pertanyaan identitas.
+# Itu atribusi SALAH -- model yang kita latih adalah Qwen. Kalau lolos ke training data,
+# klaim keliru itu ikut ke-hardcode ke model hasil fine-tune, jadi harus dibuang.
+# Pola sengaja disempitkan ke KLAIM IDENTITAS, bukan sekadar penyebutan nama vendor,
+# supaya jawaban teknis yang wajar (mis. "pakai OpenAI API") tidak ikut kebuang.
+_VENDORS = r"(openai|chatgpt|gpt-?[0-9]|google|gemini|bard|anthropic|claude|meta|llama|xai|grok|microsoft|copilot)"
+_MADE = r"(dibuat|diciptakan|dikembangkan|dilatih|dibangun|diproduksi)"
+_QUALIFIER = r"(oleh\s+|sama\s+)?(perusahaan\s+|sistem\s+|tim\s+|teknologi\s+)?"
+WRONG_ATTRIBUTION_PATTERNS = [
+    rf"\b{_MADE}\s+{_QUALIFIER}{_VENDORS}",
+    rf"\b{_VENDORS}\s+(lah\s+)?yang\s+(membuat|mengembangkan|menciptakan|melatih|membangun)\s+(saya|aku)",
+    rf"\bsaya\s+(adalah\s+|ini\s+)?{_VENDORS}\b",
+    rf"\bnama\s+saya\s+(adalah\s+)?{_VENDORS}\b",
+    rf"\b(saya|aku)\s+berasal\s+dari\s+{_QUALIFIER}{_VENDORS}",
+    rf"\bpembuat\s+(saya|aku)\s+(adalah\s+)?{_VENDORS}",
+]
+
 ECHO_SIMILARITY_THRESHOLD = 0.9
 
 
@@ -92,6 +109,16 @@ def has_refusal(text):
     return any(re.search(pat, low) for pat in REFUSAL_PATTERNS)
 
 
+def has_wrong_attribution(text):
+    low = text.lower()
+    # Syarat: jawabannya harus berbicara tentang DIRINYA SENDIRI. Tanpa penjaga ini,
+    # kalimat faktual yang wajar seperti "TensorFlow dikembangkan oleh Google" di domain
+    # teknologi/coding ikut kebuang, padahal itu jawaban benar.
+    if not re.search(r"\b(saya|aku)\b", low):
+        return False
+    return any(re.search(pat, low) for pat in WRONG_ATTRIBUTION_PATTERNS)
+
+
 def get_response_text(row):
     for m in row.get("messages", []):
         if m.get("role") == "assistant":
@@ -106,6 +133,14 @@ def get_instruction_text(row):
     return row.get("instruction", "")
 
 
+# Domain percakapan pendek: jawaban SEHARUSNYA pendek ("Siap!", "Halo, ada yang bisa
+# dibantu?"), jadi ambang min-words biasa nggak berlaku -- kalau dipaksa, semua data
+# chitchat kebuang dan model balik nggak bisa merespons sapaan.
+CHITCHAT_DOMAINS = {"sapaan", "acknowledgment", "identitas", "basa_basi"}
+CHITCHAT_MIN_WORDS = 1
+CHITCHAT_MAX_WORDS = 40
+
+
 def classify(row, min_words, max_words, max_mixed_ratio):
     instruction = get_instruction_text(row)
     response = get_response_text(row)
@@ -113,10 +148,14 @@ def classify(row, min_words, max_words, max_mixed_ratio):
     if not response or not response.strip():
         return "empty_response"
 
+    is_chitchat = row.get("domain") in CHITCHAT_DOMAINS
+    lo = CHITCHAT_MIN_WORDS if is_chitchat else min_words
+    hi = CHITCHAT_MAX_WORDS if is_chitchat else max_words
+
     wc = word_count(response)
-    if wc < min_words:
+    if wc < lo:
         return "too_short"
-    if wc > max_words:
+    if wc > hi:
         return "too_long"
 
     if looks_like_echo(instruction, response):
@@ -131,6 +170,9 @@ def classify(row, min_words, max_words, max_mixed_ratio):
     if has_refusal(response):
         return "refusal_or_meta"
 
+    if has_wrong_attribution(response):
+        return "wrong_attribution"
+
     return None  # lolos semua filter
 
 
@@ -139,7 +181,10 @@ def main():
     parser.add_argument("--in", dest="inp", type=str, default="data/generated.jsonl")
     parser.add_argument("--out", type=str, default="data/generated_clean.jsonl")
     parser.add_argument("--rejected", type=str, default="data/generated_rejected.jsonl")
-    parser.add_argument("--min-words", type=int, default=5)
+    parser.add_argument("--min-words", type=int, default=3,
+                         help="Diturunkan dari 5 ke 3 karena generator sekarang sengaja "
+                              "menghasilkan jawaban pendek untuk pertanyaan ringan -- ambang 5 "
+                              "ikut membuang jawaban singkat yang justru kita butuhkan.")
     parser.add_argument("--max-words", type=int, default=400)
     parser.add_argument("--max-mixed-ratio", type=float, default=0.15,
                          help="Ambang rasio kata bahasa Inggris umum sebelum dianggap campur bahasa.")

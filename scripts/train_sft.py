@@ -35,7 +35,7 @@ import argparse
 import inspect
 
 from datasets import load_dataset
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoModelForCausalLM, AutoTokenizer, EarlyStoppingCallback
 from trl import SFTConfig, SFTTrainer
 
 
@@ -67,9 +67,18 @@ def main():
                          help="Per-device batch size. Naikkan kalau VRAM masih longgar.")
     parser.add_argument("--grad-accum", type=int, default=2,
                          help="Gradient accumulation steps (effective batch = batch-size x grad-accum).")
-    parser.add_argument("--lr", type=float, default=2e-5)
+    parser.add_argument("--lr", type=float, default=1e-5,
+                         help="Full fine-tune jauh lebih sensitif dari LoRA. LR 3e-5..7e-5 di run "
+                              "sebelumnya bikin bobot asli ke-overwrite (model malah lupa cara "
+                              "merespons sapaan). 1e-5 lebih aman buat 0.5B.")
     parser.add_argument("--max-seq-length", type=int, default=1024)
-    parser.add_argument("--warmup-ratio", type=float, default=0.03)
+    parser.add_argument("--warmup-steps", type=int, default=10,
+                         help="Pakai warmup_steps, bukan warmup_ratio -- warmup_ratio nggak "
+                              "dikenali SFTConfig di versi trl yang terpasang (ke-skip otomatis).")
+    parser.add_argument("--weight-decay", type=float, default=0.01)
+    parser.add_argument("--early-stopping-patience", type=int, default=3,
+                         help="Stop kalau eval_loss nggak membaik selama N kali eval berturut-turut. "
+                              "0 = matikan.")
     parser.add_argument("--eval-steps", type=int, default=20,
                          help="Eval & save sinkron di step yang sama (dibutuhkan buat "
                               "load_best_model_at_end) -- default kecil karena total step run "
@@ -102,7 +111,8 @@ def main():
         gradient_accumulation_steps=args.grad_accum,
         learning_rate=args.lr,
         lr_scheduler_type="cosine",
-        warmup_ratio=args.warmup_ratio,
+        warmup_steps=args.warmup_steps,
+        weight_decay=args.weight_decay,
         max_length=args.max_seq_length,
         bf16=(args.precision == "bf16"),
         fp16=(args.precision == "fp16"),
@@ -119,12 +129,17 @@ def main():
         report_to="none",
     )
 
+    callbacks = []
+    if args.early_stopping_patience > 0:
+        callbacks.append(EarlyStoppingCallback(early_stopping_patience=args.early_stopping_patience))
+
     trainer = SFTTrainer(
         model=model,
         args=config,
         train_dataset=train_ds,
         eval_dataset=valid_ds,
         processing_class=tokenizer,
+        callbacks=callbacks,
     )
 
     trainer.train(resume_from_checkpoint=args.resume)
