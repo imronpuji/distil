@@ -77,9 +77,13 @@ def main():
                          help="Resume dari checkpoint terakhir di --out kalau ada.")
     args = parser.parse_args()
 
-    dtype = {"bf16": "bfloat16", "fp16": "float16", "fp32": "float32"}[args.precision]
+    # fp16 lewat Trainer pakai automatic mixed precision (autocast + grad scaler),
+    # yang butuh master weights fp32 -- jangan load model langsung dalam fp16, itu
+    # yang bikin "Attempting to unscale FP16 gradients" error. bf16 sebaliknya aman
+    # di-load langsung karena nggak butuh loss scaler.
+    load_dtype = "bfloat16" if args.precision == "bf16" else "float32"
     tokenizer = AutoTokenizer.from_pretrained(args.model)
-    model = AutoModelForCausalLM.from_pretrained(args.model, dtype=dtype)
+    model = AutoModelForCausalLM.from_pretrained(args.model, dtype=load_dtype)
 
     train_ds = load_dataset("json", data_files=args.train, split="train")
     valid_ds = load_dataset("json", data_files=args.valid, split="train")
