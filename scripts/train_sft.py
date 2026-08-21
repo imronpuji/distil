@@ -69,13 +69,17 @@ def main():
     parser.add_argument("--save-steps", type=int, default=500)
     parser.add_argument("--eval-steps", type=int, default=200)
     parser.add_argument("--logging-steps", type=int, default=20)
-    parser.add_argument("--bf16", action="store_true", default=True)
+    parser.add_argument("--precision", type=str, choices=["bf16", "fp16", "fp32"], default="fp16",
+                         help="fp16 buat GPU Turing/lama (T4, V100 -- nggak punya native bf16, "
+                              "bf16 di situ jatuhnya emulasi software yang jauh lebih lambat). "
+                              "bf16 buat GPU Ampere+ (A10, A100, RTX 30xx/40xx ke atas).")
     parser.add_argument("--resume", action="store_true",
                          help="Resume dari checkpoint terakhir di --out kalau ada.")
     args = parser.parse_args()
 
+    dtype = {"bf16": "bfloat16", "fp16": "float16", "fp32": "float32"}[args.precision]
     tokenizer = AutoTokenizer.from_pretrained(args.model)
-    model = AutoModelForCausalLM.from_pretrained(args.model, dtype="bfloat16" if args.bf16 else "auto")
+    model = AutoModelForCausalLM.from_pretrained(args.model, dtype=dtype)
 
     train_ds = load_dataset("json", data_files=args.train, split="train")
     valid_ds = load_dataset("json", data_files=args.valid, split="train")
@@ -90,7 +94,8 @@ def main():
         lr_scheduler_type="cosine",
         warmup_ratio=args.warmup_ratio,
         max_length=args.max_seq_length,
-        bf16=args.bf16,
+        bf16=(args.precision == "bf16"),
+        fp16=(args.precision == "fp16"),
         logging_steps=args.logging_steps,
         eval_strategy="steps",
         eval_steps=args.eval_steps,
