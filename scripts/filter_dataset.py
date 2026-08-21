@@ -125,7 +125,7 @@ def classify(row, min_words, max_words, max_mixed_ratio):
     if has_repetition_loop(response):
         return "repetition_loop"
 
-    if mixed_language_ratio(response) > max_mixed_ratio:
+    if row.get("domain") != "coding" and mixed_language_ratio(response) > max_mixed_ratio:
         return "mixed_language"
 
     if has_refusal(response):

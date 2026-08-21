@@ -1,0 +1,11 @@
+{"domain": "teknologi", "gaya": "santai", "n": 25, "error": "HTTPSConnectionPool(host='api.x.ai', port=443): Read timed out. (read timeout=180)"}
+{"domain": "pendidikan", "gaya": "formal", "n": 25, "error": "HTTPSConnectionPool(host='api.x.ai', port=443): Read timed out. (read timeout=180)"}
+{"domain": "sains", "gaya": "santai", "n": 25, "error": "HTTPSConnectionPool(host='api.x.ai', port=443): Read timed out. (read timeout=180)"}
+{"domain": "hukum", "gaya": "formal", "n": 25, "error": "HTTPSConnectionPool(host='api.x.ai', port=443): Read timed out. (read timeout=180)"}
+{"domain": "coding", "gaya": "formal", "n": 25, "error": "Expecting ',' delimiter: line 76 column 346 (char 11981)"}
+{"domain": "kesehatan", "gaya": "formal", "n": 40, "error": "Expecting ',' delimiter: line 39 column 37 (char 21356)"}
+{"domain": "percakapan_umum", "gaya": "santai", "n": 40, "error": "Invalid control character at: line 25 column 285 (char 7415)"}
+{"domain": "kesehatan", "gaya": "formal", "n": 25, "error": "Unterminated string starting at: line 24 column 138 (char 8607)"}
+{"domain": "kuliner", "gaya": "formal", "n": 40, "error": "Unterminated string starting at: line 33 column 18 (char 19875)"}
+{"domain": "coding", "gaya": "formal", "n": 25, "error": "Expecting ',' delimiter: line 67 column 43 (char 10662)"}
+{"domain": "rumah_tangga", "gaya": "formal", "n": 40, "error": "Unterminated string starting at: line 30 column 19 (char 10981)"}

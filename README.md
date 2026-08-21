@@ -1,73 +1,57 @@
-# Dataset Generation Pipeline — Distillation Gemma 4 E4B → Qwen
+# Dataset Generation & SFT Pipeline — Grok → Qwen2.5-0.5B (Bahasa Indonesia)
 
-Script untuk langkah 1 & 2 dari rencana proyek: generate dataset instruction-response
-Bahasa Indonesia dari teacher (Gemma 4 E4B via Ollama), lalu filter/bersihkan sebelum SFT.
-
-**Catatan penting:** semua script ini ditulis & diuji secara sintaksis/logika di
-environment cloud yang TIDAK punya akses ke Ollama kamu di EC2 g5g. Sebelum
-dijalankan untuk produksi, jalankan dulu di instance EC2-mu (di mana
-`ollama run gemma4:e4b` sudah aktif) dengan `--limit` kecil untuk verifikasi.
+Pipeline buat generate dataset instruksi+jawaban Bahasa Indonesia dari nol pakai
+Grok (xAI API), bersihkan, lalu full fine-tune (SFT) model kecil (Qwen2.5-0.5B-Instruct)
+biar lebih fasih & relevan menjawab dalam Bahasa Indonesia.
 
 ## Struktur
 
 ```
 scripts/
-  seed_bank.py         # generate seed prompts (manual + combinatorial)
-  generate_dataset.py  # panggil Ollama API, hasilkan ChatML JSONL
+  generate_dataset.py  # Grok generate PASANGAN instruksi+jawaban dari nol (no seed file)
   filter_dataset.py    # filter/bersihkan dataset hasil generate
+  train_sft.py          # full fine-tune SFT (jalankan di GPU NVIDIA / cloud)
+  seed_bank.py          # dipakai generate_dataset.py cuma sebagai daftar domain/topik
+                         # inspirasi (bukan sumber instruksi final)
 data/
-  seed_prompts.jsonl   # seed yang sudah digenerate (contoh: 1540 baris)
+  generated.jsonl        # hasil mentah dari generate_dataset.py
+  generated_clean.jsonl  # hasil setelah difilter
+  mlx_dataset/            # train.jsonl / valid.jsonl / test.jsonl (siap SFT)
+  held_out_test.jsonl     # 300 baris disisihkan buat eval manual (JANGAN dipakai training)
 ```
 
-## 1. Generate seed prompts
+## 1. Generate dataset dari Grok (xAI)
+
+Butuh `XAI_API_KEY` (taruh di `.env` di root project). Grok generate instruksi
+**dan** jawabannya sekaligus, per domain/gaya yang dirotasi otomatis.
 
 ```bash
-python scripts/seed_bank.py --n 3000 --out data/seed_prompts.jsonl
-```
+# gampangnya, mode interaktif (jalankan dari terminal kamu sendiri, bukan lewat agent)
+python scripts/generate_dataset.py --interactive
 
-Saat ini kombinasi domain x topik x template x gaya menghasilkan ~1540 seed unik.
-Untuk menembus ribuan lebih:
-- Tambah topik baru di dict `DOMAINS` (banyak-banyakin per domain).
-- Tambah variasi kalimat di `INSTRUCTION_TEMPLATES`.
-- Tambah contoh berkualitas di `SEED_MANUAL` (terutama untuk roleplay, curhat,
-  multi-turn style yang sulit dibuat lewat template).
-
-## 2. Generate dataset dari teacher (Gemma 4 E4B via Ollama)
-
-Di instance EC2 (pastikan `ollama serve` jalan & `ollama pull gemma4:e4b` sudah selesai):
-
-```bash
-# tes dulu dengan jumlah kecil
+# atau langsung
 python scripts/generate_dataset.py \
-    --seeds data/seed_prompts.jsonl \
-    --out data/generated.jsonl \
-    --model gemma4:e4b \
-    --host http://localhost:11434 \
-    --workers 2 \
-    --temperature 0.8 \
-    --limit 20
-
-# kalau hasilnya bagus, jalankan penuh (hapus --limit)
-python scripts/generate_dataset.py \
-    --seeds data/seed_prompts.jsonl \
-    --out data/generated.jsonl \
-    --workers 2
+    --total 15000 \
+    --batch-size 25 \
+    --workers 8 \
+    --rpm 0 \
+    --model grok-4-fast-non-reasoning \
+    --out data/generated.jsonl
 ```
 
 Poin penting:
-- **Resume otomatis**: kalau script berhenti di tengah jalan (mis. crash/timeout),
-  tinggal jalankan ulang command yang sama — seed yang sudah punya hasil di
-  `data/generated.jsonl` akan dilewati.
-- **`--workers`**: mulai dari 1–2 dulu. Ollama di 2x T4G punya memori terbatas;
-  paralelisme tinggi bisa bikin OOM atau justru memperlambat (request antre di
-  belakang layar). Naikkan bertahap sambil pantau `nvidia-smi`.
-- **`--num-samples N`**: kalau mau generate N jawaban per prompt dengan temperature
-  sama (untuk nanti dipilih yang terbaik / self-consistency filtering).
-- Error individual (timeout, response gagal parse) dicatat di
-  `data/generated.jsonl.errors.jsonl` dan otomatis di-retry saat re-run karena
-  tidak dianggap "done".
+- **`--model`**: default `grok-4-fast-non-reasoning` — murah & cepat ($0.20/1M input,
+  $0.50/1M output di bawah 128k token), cocok buat generate volume besar. Model
+  reasoning (`grok-4.6` dkk) lebih mahal & lambat, cuma worth it buat held-out
+  eval set kecil yang butuh kualitas maksimal.
+- **`--batch-size`**: berapa pasang instruksi+jawaban diminta sekaligus per request
+  (model dipaksa balas JSON array). Naikin buat hemat jumlah request.
+- **`--rpm`**: rate limit per menit, berlaku global lintas worker. `0` = tanpa batas.
+- Resume otomatis & dedup: instruksi yang hash-nya udah ada di file output otomatis
+  di-skip kalau muncul lagi.
+- Error dicatat terpisah di `<out>.errors.jsonl`.
 
-## 3. Filter & bersihkan dataset
+## 2. Filter & bersihkan dataset
 
 ```bash
 python scripts/filter_dataset.py \
@@ -78,24 +62,70 @@ python scripts/filter_dataset.py \
 ```
 
 Kriteria yang dibuang (tercatat di `reject_reason` pada file rejected):
-- `empty_response`, `too_short`, `too_long`
-- `echoes_instruction` — jawaban cuma mengulang instruksi
-- `repetition_loop` — kata/frasa berulang berturut-turut (gejala looping generation)
-- `mixed_language` — rasio kata bahasa Inggris umum terlalu tinggi (heuristik, bukan
-  detector bahasa formal — kalibrasi `--max-mixed-ratio` sesuai hasil cek manual)
-- `refusal_or_meta` — pola penolakan / "sebagai model bahasa..."
-- `duplicate` — jawaban identik (case-insensitive) dengan yang sudah lolos sebelumnya
+`empty_response`, `too_short`, `too_long`, `echoes_instruction`, `repetition_loop`,
+`mixed_language` (di-skip khusus domain `coding` karena kode wajar mengandung kata
+Inggris), `refusal_or_meta`, `duplicate`.
 
-**Wajib**: cek manual 30–50 baris dari `data/generated_rejected.jsonl` untuk pastikan
-filter tidak terlalu agresif (buang data bagus) atau terlalu longgar (loloskan data
-jelek) sebelum dipakai untuk kalibrasi ambang.
+**Wajib**: cek manual beberapa puluh baris dari `data/generated_rejected.jsonl`
+buat pastikan filter nggak kebablasan.
 
-## Langkah selanjutnya (belum dikerjakan di sesi ini)
+## 3. Split train/valid/held-out
 
-1. Jalankan pipeline ini penuh di EC2 untuk hasilkan ~10.000–20.000 pasang bersih
-   (lihat rekomendasi ukuran dataset di project brief).
-2. Sisihkan held-out set (200–500 prompt) sebelum SFT untuk evaluasi manual cepat.
-3. Siapkan pipeline SFT Qwen 1.5B (unsloth/axolotl) — format ChatML dari
-   `generated_clean.jsonl` sudah siap pakai untuk tahap ini.
-4. Evaluasi dengan IndoMMLU/IndoNLU + manual testing.
-# distil
+```bash
+python3 - <<'PY'
+import json, random
+random.seed(42)
+rows = [json.loads(l) for l in open("data/generated_clean.jsonl")]
+random.shuffle(rows)
+valid, test, train = rows[:400], rows[400:700], rows[700:]
+def write(path, items):
+    with open(path, "w", encoding="utf-8") as f:
+        for r in items:
+            f.write(json.dumps({"messages": r["messages"]}, ensure_ascii=False) + "\n")
+write("data/mlx_dataset/train.jsonl", train)
+write("data/mlx_dataset/valid.jsonl", valid)
+write("data/mlx_dataset/test.jsonl", test)
+PY
+```
+
+`held_out_test.jsonl` / `mlx_dataset/test.jsonl` **jangan pernah dipakai buat
+training** — itu yang dipakai buat eval manual di langkah 5.
+
+## 4. Full fine-tune (SFT)
+
+Dua opsi tergantung hardware:
+
+**A. GPU NVIDIA (cloud: RunPod/Vast.ai/Colab) — direkomendasikan buat training penuh**
+
+```bash
+pip install -r requirements-train.txt
+python scripts/train_sft.py \
+    --train data/mlx_dataset/train.jsonl \
+    --valid data/mlx_dataset/valid.jsonl \
+    --model Qwen/Qwen2.5-0.5B-Instruct \
+    --out checkpoints/qwen05b-sft-v1 \
+    --epochs 3 --batch-size 16 --grad-accum 2 --lr 2e-5
+```
+
+**B. Mac Apple Silicon (mlx-lm) — buat eksperimen cepat/kecil, jangan buat run penuh**
+
+```bash
+pip install mlx-lm
+mlx_lm.lora \
+    --model Qwen/Qwen2.5-0.5B-Instruct \
+    --train --data data/mlx_dataset --fine-tune-type full --num-layers -1 \
+    --batch-size 8 --iters 2000 --learning-rate 2e-5 \
+    --adapter-path checkpoints/qwen05b-sft-v1
+```
+
+Full fine-tune (bukan LoRA) direkomendasikan buat model sekecil ini — riset Cendol
+(Cahyawijaya et al., 2024) nunjukin LoRA kurang efektif buat language adaptation
+dibanding full fine-tune model yang lebih kecil sekalipun.
+
+## 5. Evaluasi
+
+- **Otomatis**: IndoMMLU / IndoNLU buat benchmark umum.
+- **Manual (wajib)**: generate jawaban model buat semua prompt di
+  `held_out_test.jsonl`, baca sendiri — cek relevansi jawaban, grammar, dan ada
+  nggak mixed-language random. Ini yang paling nentuin training beneran berhasil,
+  karena metrik otomatis gampang menipu buat model kecil di bahasa low-resource.
