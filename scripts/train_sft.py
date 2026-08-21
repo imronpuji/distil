@@ -58,7 +58,11 @@ def main():
     parser.add_argument("--valid", type=str, default="data/mlx_dataset/valid.jsonl")
     parser.add_argument("--model", type=str, default="Qwen/Qwen2.5-0.5B-Instruct")
     parser.add_argument("--out", type=str, default="checkpoints/qwen05b-sft-v1")
-    parser.add_argument("--epochs", type=float, default=3.0)
+    parser.add_argument("--epochs", type=float, default=2.0,
+                         help="3 epoch di full fine-tune 0.5B terbukti overfit (eval_loss naik "
+                              "lagi di akhir) -- default diturunin ke 2, dan load_best_model_at_end "
+                              "bakal otomatis pilih checkpoint dengan eval_loss terendah, bukan "
+                              "asal ambil step terakhir.")
     parser.add_argument("--batch-size", type=int, default=16,
                          help="Per-device batch size. Naikkan kalau VRAM masih longgar.")
     parser.add_argument("--grad-accum", type=int, default=2,
@@ -66,8 +70,10 @@ def main():
     parser.add_argument("--lr", type=float, default=2e-5)
     parser.add_argument("--max-seq-length", type=int, default=1024)
     parser.add_argument("--warmup-ratio", type=float, default=0.03)
-    parser.add_argument("--save-steps", type=int, default=500)
-    parser.add_argument("--eval-steps", type=int, default=200)
+    parser.add_argument("--eval-steps", type=int, default=20,
+                         help="Eval & save sinkron di step yang sama (dibutuhkan buat "
+                              "load_best_model_at_end) -- default kecil karena total step run "
+                              "kecil kayak gini (~100-200an step).")
     parser.add_argument("--logging-steps", type=int, default=20)
     parser.add_argument("--precision", type=str, choices=["bf16", "fp16", "fp32"], default="fp16",
                          help="fp16 buat GPU Turing/lama (T4, V100 -- nggak punya native bf16, "
@@ -104,8 +110,11 @@ def main():
         eval_strategy="steps",
         eval_steps=args.eval_steps,
         save_strategy="steps",
-        save_steps=args.save_steps,
+        save_steps=args.eval_steps,
         save_total_limit=3,
+        load_best_model_at_end=True,
+        metric_for_best_model="eval_loss",
+        greater_is_better=False,
         completion_only_loss=True,
         report_to="none",
     )
