@@ -308,10 +308,26 @@ def build_chitchat_prompt(domain, gaya, n):
     )
 
 
+# Domain berisi fakta yang bisa dicek benar-salahnya (beda dari domain tips/opini
+# kayak kesehatan/karir yang lebih longgar). Ditambah setelah eval nemuin halusinasi
+# konkret: "Jogja adalah kota di Jawa Barat" (salah, itu DIY/Jawa Tengah).
+FACT_HEAVY_DOMAINS = {"pemerintahan", "geografi_indonesia", "wisata_indonesia",
+                      "perusahaan_publik", "kerusakan_lingkungan", "tambang"}
+
+
 def build_freeform_prompt(domain, topics, gaya, n):
     if domain in CHITCHAT_DOMAINS:
         return build_chitchat_prompt(domain, gaya, n)
     topik_str = ", ".join(topics)
+    accuracy_note = (
+        "\n\nPERINGATAN KHUSUS domain ini berisi FAKTA yang bisa dicek benar-salahnya "
+        "(nama provinsi, letak kota, nama pejabat/lembaga, nama perusahaan, dsb). "
+        "SEBUAH KESALAHAN FAKTA (mis. salah sebut provinsi suatu kota) lebih buruk daripada "
+        "jawaban pendek. Kalau ragu suatu detail spesifik (angka pasti, nama pejabat saat ini, "
+        "data terbaru), JANGAN mengarang -- jawab secara umum/aman atau nyatakan itu bisa berubah "
+        "seiring waktu, daripada menyebut detail yang belum tentu benar."
+        if domain in FACT_HEAVY_DOMAINS else ""
+    )
     gaya_desc = "formal dan baku" if gaya == "formal" else "santai sehari-hari"
     # Jumlah eksplisit, bukan "sekitar sepertiga" -- pecahan samar bikin teacher menjawab
     # pendek semua (terukur: 63% jawaban <=20 kata, jauh dari target 33%).
@@ -343,6 +359,7 @@ def build_freeform_prompt(domain, topics, gaya, n):
         "Balas HANYA dengan JSON array, tanpa markdown code fence atau teks lain di luar JSON. "
         f"Tepat {n} elemen, tiap elemen berupa object dengan dua field: "
         '"instruction" (string) dan "response" (string).'
+        f"{accuracy_note}"
     )
 
 

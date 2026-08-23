@@ -105,6 +105,39 @@ DOMAINS = {
         "cara menyapa teman lama yang jarang ketemu", "ide ucapan selamat ulang tahun",
         "cara meminta maaf yang tulus",
     ],
+    # Domain fakta Indonesia -- ditambah setelah eval nemuin model salah sebut
+    # provinsi (mis. "Jogja di Jawa Barat"). Topik ini sengaja lebih spesifik/faktual
+    # dibanding domain lain, supaya Grok digiring generate konten yang bisa dicek benar-salahnya.
+    "pemerintahan": [
+        "struktur pemerintahan Indonesia", "tugas presiden dan wakil presiden",
+        "fungsi DPR dan MPR", "kementerian di Indonesia", "proses pemilu di Indonesia",
+        "otonomi daerah dan pemerintah provinsi", "lembaga tinggi negara di Indonesia",
+    ],
+    "geografi_indonesia": [
+        "provinsi-provinsi di Indonesia dan ibu kotanya", "pulau-pulau besar di Indonesia",
+        "letak geografis kota-kota besar di Indonesia", "batas wilayah antar provinsi",
+        "gunung dan sungai terkenal di Indonesia", "perbedaan wilayah waktu WIB WITA WIT",
+    ],
+    "wisata_indonesia": [
+        "destinasi wisata terkenal di tiap daerah", "tempat wisata alam di Indonesia",
+        "budaya dan tradisi khas daerah", "kuliner khas tiap provinsi",
+        "festival budaya di Indonesia", "rekomendasi wisata sejarah di Indonesia",
+    ],
+    "perusahaan_publik": [
+        "perusahaan BUMN terkenal di Indonesia", "perusahaan yang terdaftar di Bursa Efek Indonesia",
+        "sektor bisnis utama perusahaan besar Indonesia", "sejarah singkat perusahaan besar Indonesia",
+        "perbedaan BUMN dan perusahaan swasta",
+    ],
+    "kerusakan_lingkungan": [
+        "deforestasi di Indonesia", "pencemaran sungai dan laut di Indonesia",
+        "dampak perubahan iklim di Indonesia", "penanganan sampah plastik",
+        "konservasi hutan dan satwa langka",
+    ],
+    "tambang": [
+        "pertambangan batu bara di Indonesia", "tambang nikel dan mineral di Indonesia",
+        "dampak lingkungan dari aktivitas pertambangan", "regulasi pertambangan di Indonesia",
+        "daerah penghasil tambang utama di Indonesia",
+    ],
 }
 
 # ---------------------------------------------------------------------------
