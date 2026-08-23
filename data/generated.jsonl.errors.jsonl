@@ -10,3 +10,8 @@
 {"domain": "coding", "gaya": "formal", "n": 25, "error": "Expecting ',' delimiter: line 67 column 43 (char 10662)"}
 {"domain": "rumah_tangga", "gaya": "formal", "n": 40, "error": "Unterminated string starting at: line 30 column 19 (char 10981)"}
 {"domain": "basa_basi", "gaya": "santai", "n": 25, "error": "Expecting ',' delimiter: line 26 column 64 (char 1759)"}
+{"domain": "traveling", "gaya": "santai", "n": 40, "error": "Unterminated string starting at: line 38 column 190 (char 14166)"}
+{"domain": "identitas", "gaya": "formal", "n": 40, "error": "Expecting ',' delimiter: line 41 column 77 (char 3697)"}
+{"domain": "rumah_tangga", "gaya": "formal", "n": 40, "error": "Unterminated string starting at: line 23 column 168 (char 5193)"}
+{"domain": "coding", "gaya": "formal", "n": 40, "error": "Invalid control character at: line 39 column 40 (char 14745)"}
+{"domain": "basa_basi", "gaya": "santai", "n": 40, "error": "Expecting ',' delimiter: line 40 column 92 (char 2986)"}
