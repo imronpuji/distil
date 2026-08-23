@@ -15,3 +15,9 @@
 {"domain": "rumah_tangga", "gaya": "formal", "n": 40, "error": "Unterminated string starting at: line 23 column 168 (char 5193)"}
 {"domain": "coding", "gaya": "formal", "n": 40, "error": "Invalid control character at: line 39 column 40 (char 14745)"}
 {"domain": "basa_basi", "gaya": "santai", "n": 40, "error": "Expecting ',' delimiter: line 40 column 92 (char 2986)"}
+{"domain": "tambang", "gaya": "santai", "n": 40, "error": "Unterminated string starting at: line 33 column 19 (char 8449)"}
+{"domain": "geografi_indonesia", "gaya": "santai", "n": 40, "error": "Unterminated string starting at: line 112 column 17 (char 6780)"}
+{"domain": "perusahaan_publik", "gaya": "santai", "n": 40, "error": "Unterminated string starting at: line 41 column 127 (char 10736)"}
+{"domain": "wisata_indonesia", "gaya": "formal", "n": 40, "error": "Unterminated string starting at: line 17 column 104 (char 3432)"}
+{"domain": "geografi_indonesia", "gaya": "santai", "n": 40, "error": "Unterminated string starting at: line 22 column 18 (char 3634)"}
+{"domain": "tambang", "gaya": "santai", "n": 40, "error": "Unterminated string starting at: line 140 column 17 (char 15400)"}
