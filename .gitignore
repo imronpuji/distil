@@ -1,3 +1,6 @@
 .env
 .gstack/
 checkpoints/
+.venv/
+__pycache__/
+*.pyc
