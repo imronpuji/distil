@@ -207,6 +207,11 @@ def call_ollama(host, model, system_prompt, user_prompt, temperature, timeout=18
         ],
         "stream": False,
         "options": {"temperature": temperature},
+        # Model thinking-capable (mis. gemma4) mikir dulu secara default kalau nggak
+        # dimatiin -- jauh lebih lambat, dan generate_dataset.py ini didesain buat generate
+        # massal cepat (bukan CoT), sama kayak keputusan grok-4-fast-non-reasoning &
+        # deepseek thinking:disabled sebelumnya. Model non-thinking abaikan field ini.
+        "think": False,
     }
     resp = requests.post(url, json=payload, timeout=timeout)
     resp.raise_for_status()
