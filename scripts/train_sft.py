@@ -83,6 +83,9 @@ def main():
                          help="Eval & save sinkron di step yang sama (dibutuhkan buat "
                               "load_best_model_at_end) -- default kecil karena total step run "
                               "kecil kayak gini (~100-200an step).")
+    parser.add_argument("--save-total-limit", type=int, default=2,
+                         help="Jumlah checkpoint yang disimpan bersamaan (~2GB/checkpoint untuk "
+                              "0.5B). Turunkan ke 1 kalau disk instance kecil.")
     parser.add_argument("--logging-steps", type=int, default=20)
     parser.add_argument("--precision", type=str, choices=["bf16", "fp16", "fp32"], default="fp16",
                          help="fp16 buat GPU Turing/lama (T4, V100 -- nggak punya native bf16, "
@@ -121,7 +124,7 @@ def main():
         eval_steps=args.eval_steps,
         save_strategy="steps",
         save_steps=args.eval_steps,
-        save_total_limit=3,
+        save_total_limit=args.save_total_limit,
         load_best_model_at_end=True,
         metric_for_best_model="eval_loss",
         greater_is_better=False,
