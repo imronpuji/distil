@@ -140,6 +140,16 @@ CHITCHAT_DOMAINS = {"sapaan", "acknowledgment", "identitas", "basa_basi"}
 CHITCHAT_MIN_WORDS = 1
 CHITCHAT_MAX_WORDS = 40
 
+# Domain CoT (v2, scripts/v2/generate_cot_dataset.py): jawaban = <think>...</think> +
+# jawaban akhir, jauh lebih panjang dari jawaban biasa (median ~784 kata di sampel 604
+# baris). Ambang 400 kata biasa bakal buang 70% data ini. Tapi tetap kasih plafon --
+# ketemu outlier 18.798 kata (reasoning loop nyasar), itu genuinely harus dibuang.
+REASONING_DOMAIN_PREFIX = "reasoning_"
+REASONING_MIN_WORDS = 5
+# Sengaja nggak dibatasi atas -- biarin reasoning sepanjang apapun lolos filter, training
+# (--max-seq-length) yang natural motong kalau kepanjangan buat context window-nya.
+REASONING_MAX_WORDS = float("inf")
+
 
 def classify(row, min_words, max_words, max_mixed_ratio):
     instruction = get_instruction_text(row)
@@ -148,9 +158,15 @@ def classify(row, min_words, max_words, max_mixed_ratio):
     if not response or not response.strip():
         return "empty_response"
 
-    is_chitchat = row.get("domain") in CHITCHAT_DOMAINS
-    lo = CHITCHAT_MIN_WORDS if is_chitchat else min_words
-    hi = CHITCHAT_MAX_WORDS if is_chitchat else max_words
+    domain = row.get("domain") or ""
+    is_chitchat = domain in CHITCHAT_DOMAINS
+    is_reasoning = domain.startswith(REASONING_DOMAIN_PREFIX)
+    if is_chitchat:
+        lo, hi = CHITCHAT_MIN_WORDS, CHITCHAT_MAX_WORDS
+    elif is_reasoning:
+        lo, hi = REASONING_MIN_WORDS, REASONING_MAX_WORDS
+    else:
+        lo, hi = min_words, max_words
 
     wc = word_count(response)
     if wc < lo:
@@ -164,7 +180,10 @@ def classify(row, min_words, max_words, max_mixed_ratio):
     if has_repetition_loop(response):
         return "repetition_loop"
 
-    if row.get("domain") != "coding" and mixed_language_ratio(response) > max_mixed_ratio:
+    # coding & reasoning dikecualikan dari cek mixed_language: kode wajar mengandung kata
+    # Inggris, dan reasoning trace kadang selip Inggris/notasi matematika (\frac, dll) yang
+    # nggak seharusnya jadi alasan buang seluruh data.
+    if domain != "coding" and not is_reasoning and mixed_language_ratio(response) > max_mixed_ratio:
         return "mixed_language"
 
     if has_refusal(response):
