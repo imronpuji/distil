@@ -92,7 +92,10 @@ def main():
                               "bf16 di situ jatuhnya emulasi software yang jauh lebih lambat). "
                               "bf16 buat GPU Ampere+ (A10, A100, RTX 30xx/40xx ke atas).")
     parser.add_argument("--resume", action="store_true",
-                         help="Resume dari checkpoint terakhir di --out kalau ada.")
+                         help="Resume dari checkpoint terakhir di --out kalau ada. Catatan: "
+                              "save_only_model=True (buat hemat disk) berarti optimizer state "
+                              "TIDAK tersimpan -- resume akan mulai ulang optimizer dari nol, "
+                              "bukan resume persis dari step training terakhir.")
     args = parser.parse_args()
 
     # fp16 lewat Trainer pakai automatic mixed precision (autocast + grad scaler),
@@ -125,6 +128,11 @@ def main():
         save_strategy="steps",
         save_steps=args.eval_steps,
         save_total_limit=args.save_total_limit,
+        # optimizer.pt (state AdamW) bisa 2x ukuran model -- kita nggak butuh resume dari
+        # step persis, cuma butuh bobot model. Ini juga yang bikin disk penuh berulang kali:
+        # checkpoint baru ditulis SEBELUM yang lama dihapus, jadi sesaat butuh 2x ruang
+        # checkpoint meski save_total_limit=1. save_only_model motong itu jadi ~1/3-nya.
+        save_only_model=True,
         load_best_model_at_end=True,
         metric_for_best_model="eval_loss",
         greater_is_better=False,
