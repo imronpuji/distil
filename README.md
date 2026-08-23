@@ -114,15 +114,27 @@ valid, test, train = rows[:400], rows[400:700], rows[700:]
 def write(path, items):
     with open(path, "w", encoding="utf-8") as f:
         for r in items:
-            f.write(json.dumps({"messages": r["messages"]}, ensure_ascii=False) + "\n")
+            # domain ikut disimpan (SFTTrainer abaikan kolom ekstra di luar "messages"),
+            # dipakai buat breakdown per-domain waktu judge_eval.py / analisis manual.
+            f.write(json.dumps({"messages": r["messages"], "domain": r.get("domain")},
+                                ensure_ascii=False) + "\n")
 write("data/mlx_dataset/train.jsonl", train)
 write("data/mlx_dataset/valid.jsonl", valid)
 write("data/mlx_dataset/test.jsonl", test)
+write("data/held_out_test.jsonl", test)
 PY
 ```
 
 `held_out_test.jsonl` / `mlx_dataset/test.jsonl` **jangan pernah dipakai buat
 training** — itu yang dipakai buat eval manual di langkah 5.
+
+**Penting — konsistensi train/eval**: split ini pakai `random.seed(42)` di atas
+`data/generated_clean.jsonl` yang UTUH. Kalau kamu generate data tambahan lalu
+split ULANG, `held_out_test.jsonl` yang baru bisa berisi prompt dari korpus yang
+model-nya sendiri belum pernah lihat -- bikin eval jadi nggak adil (model dites
+pakai materi yang bukan dari training run itu). **Selalu split SEKALI di akhir**,
+setelah semua data (termasuk chitchat & tambahan) selesai digenerate, baru training
+dan eval jalan di atas split yang sama itu.
 
 ## 4. Full fine-tune (SFT)
 
